@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Paper Piano</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎹</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #F4F5F3;
+    --surface: #FFFFFF;
+    --ink: #1F1E24;
+    --muted: #66656D;
+    --line: #D6D6D2;
+    --felt: #A3253A;
+    --felt-soft: rgba(163, 37, 58, 0.14);
+    --white-key: #FFFFFF;
+    --black-key: #1F1E24;
+    color-scheme: light;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #17161A; --surface: #211F25; --ink: #EDE8DC; --muted: #A19D96;
+      --line: #36343B; --felt: #D2475C; --felt-soft: rgba(210, 71, 92, 0.18);
+      --white-key: #EDE8DC; --black-key: #0E0D10; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #17161A; --surface: #211F25; --ink: #EDE8DC; --muted: #A19D96;
+    --line: #36343B; --felt: #D2475C; --felt-soft: rgba(210, 71, 92, 0.18);
+    --white-key: #EDE8DC; --black-key: #0E0D10; color-scheme: dark;
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: "Familjen Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 16px; line-height: 1.5;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 40px; }
+
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 20px; }
+  h1 { font-size: clamp(2.2rem, 5vw, 3.4rem); line-height: 1; letter-spacing: -0.03em; margin: 0; font-weight: 700; }
+  .tagline { color: var(--muted); margin: 0; max-width: 46ch; }
+
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+
+  .stage {
+    position: relative; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; aspect-ratio: 16 / 9;
+  }
+  .stage canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+  .stage-msg {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; padding: 24px; text-align: center; color: var(--muted);
+  }
+  .stage-msg[hidden] { display: none; }
+  .hint {
+    position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 8px 12px; border-radius: 8px;
+    background: rgba(20, 19, 23, 0.78); color: #fff; font-size: 0.95rem; pointer-events: none;
+  }
+  .hint[hidden] { display: none; }
+
+  aside { display: flex; flex-direction: column; gap: 14px; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .panel h2 { font-size: 1rem; margin: 0 0 10px; font-weight: 600; }
+  ol.steps { margin: 0; padding-left: 1.2em; color: var(--muted); }
+  ol.steps li { margin-bottom: 6px; }
+  ol.steps li.done { color: var(--ink); }
+  ol.steps li.done::marker { color: var(--felt); }
+
+  button, select, .btn {
+    font: inherit; font-size: 0.95rem; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--paper); color: var(--ink); padding: 9px 12px; cursor: pointer; text-decoration: none;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  button.primary { background: var(--felt); color: #fff; border-color: var(--felt); font-weight: 600; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button:focus-visible, select:focus-visible, .btn:focus-visible, input:focus-visible { outline: 2px solid var(--felt); outline-offset: 2px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .row > * { flex: 1 1 auto; }
+  label { display: block; font-size: 0.9rem; color: var(--muted); margin: 10px 0 4px; }
+  select { width: 100%; }
+  input[type="range"] { width: 100%; accent-color: var(--felt); }
+  .check { display: flex; align-items: center; gap: 8px; color: var(--ink); margin-top: 10px; }
+  .status { font-size: 0.9rem; color: var(--muted); min-height: 1.5em; margin: 8px 0 0; }
+  .song-progress { font-size: 0.9rem; color: var(--muted); margin: 8px 0 0; }
+
+  .keyboard-wrap { margin-top: 20px; overflow-x: auto; }
+  .keyboard { position: relative; height: 150px; min-width: 560px; user-select: none; touch-action: none; }
+  .key { position: absolute; top: 0; border: 1px solid var(--line); cursor: pointer; }
+  .key.white { background: var(--white-key); height: 100%; border-radius: 0 0 6px 6px; z-index: 1; }
+  .key.black { background: var(--black-key); height: 60%; border-radius: 0 0 4px 4px; z-index: 2; border-color: var(--black-key); }
+  .key span { position: absolute; bottom: 8px; left: 0; right: 0; text-align: center; font-size: 0.8rem; color: var(--muted); pointer-events: none; }
+  .key.next { box-shadow: inset 0 -6px 0 var(--felt); }
+  .key.on { background: var(--felt); border-color: var(--felt); }
+  .key.on span { color: #fff; }
+  @media (prefers-reduced-motion: no-preference) { .key { transition: background-color 80ms; } }
+  footer { margin-top: 18px; color: var(--muted); font-size: 0.9rem; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Paper Piano</h1>
+    <p class="tagline">Print a keyboard, point a camera at it, and play it with your fingers.</p>
+  </header>
+
+  <div class="layout">
+    <div>
+      <div class="stage" id="stage">
+        <canvas id="view" aria-label="Camera view of your paper keyboard"></canvas>
+        <div class="stage-msg" id="stageMsg">
+          <p>Your camera feed appears here. Nothing leaves your device.</p>
+          <button class="primary" id="startBtn">Start camera</button>
+        </div>
+        <div class="hint" id="hint" hidden></div>
+      </div>
+
+      <div class="keyboard-wrap">
+        <div class="keyboard" id="keyboard" aria-label="On-screen keyboard; click to test the sound"></div>
+      </div>
+    </div>
+
+    <aside>
+      <div class="panel">
+        <h2>Set up</h2>
+        <ol class="steps" id="steps">
+          <li id="step1">Print the keyboard at 100% and tape it to a desk.</li>
+          <li id="step2">Point a camera down at it from above or in front.</li>
+          <li id="step3">Click the red dots 1, 2, 3, 4 in the camera view.</li>
+        </ol>
+        <div class="row" style="margin-top:12px">
+          <a class="btn" href="paper-piano-keyboard.pdf" download>Download keyboard</a>
+          <button id="cornersBtn" disabled>Redo corners</button>
+        </div>
+        <label for="cameraSelect">Camera</label>
+        <select id="cameraSelect" disabled><option>Start the camera first</option></select>
+        <p class="status" id="status">Models load when you start the camera.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Playing</h2>
+        <label for="mode">How notes trigger</label>
+        <select id="mode">
+          <option value="tap">Tap: press down on a key</option>
+          <option value="slide">Slide: play when a finger enters a key</option>
+        </select>
+        <label for="sensitivity">Tap sensitivity</label>
+        <input type="range" id="sensitivity" min="1" max="10" value="6">
+        <label class="check"><input type="checkbox" id="flip"> Mirror the camera view</label>
+        <label class="check"><input type="checkbox" id="showKeys" checked> Show key outlines on video</label>
+      </div>
+
+      <div class="panel">
+        <h2>Learn a tune</h2>
+        <select id="song" aria-label="Song">
+          <option value="">Free play</option>
+          <option value="ode">Ode to Joy</option>
+          <option value="twinkle">Twinkle, Twinkle, Little Star</option>
+          <option value="scale">C major scale</option>
+        </select>
+        <p class="song-progress" id="songProgress"></p>
+      </div>
+    </aside>
+  </div>
+
+  <footer>Hand tracking by MediaPipe. Piano samples from the Salamander Grand Piano. Everything runs in your browser.</footer>
+</div>
+
+<script type="module">
+/* ---------- Keyboard geometry (matches paper-piano-keyboard.pdf) ---------- */
+const N_WHITE = 14, BLACK_H = 0.6, BLACK_W = 0.6;
+const WHITE_SEMITONES = [0, 2, 4, 5, 7, 9, 11];
+const BLACK_AFTER = new Set([0, 1, 3, 4, 5]);
+const NAMES = ["C", "D", "E", "F", "G", "A", "B"];
+const KEYS = []; // { midi, black, u0, u1, v1, label }
+for (let i = 0; i < N_WHITE; i++) {
+  const oct = Math.floor(i / 7);
+  KEYS.push({ midi: 60 + 12 * oct + WHITE_SEMITONES[i % 7], black: false, u0: i / N_WHITE, u1: (i + 1) / N_WHITE, v1: 1,
+              label: NAMES[i % 7] + (i % 7 === 0 ? 4 + oct : "") });
+  if (i < N_WHITE - 1 && BLACK_AFTER.has(i % 7)) {
+    const c = (i + 1) / N_WHITE, w = BLACK_W / N_WHITE;
+    KEYS.push({ midi: 60 + 12 * oct + WHITE_SEMITONES[i % 7] + 1, black: true, u0: c - w / 2, u1: c + w / 2, v1: BLACK_H, label: "" });
+  }
+}
+function keyAt(u, v) {
+  if (u < 0 || u > 1 || v < 0 || v > 1) return null;
+  for (const k of KEYS) if (k.black && v <= k.v1 && u >= k.u0 && u <= k.u1) return k;
+  return KEYS.find(k => !k.black && u >= k.u0 && u < k.u1) || null;
+}
+
+/* ---------- Homography (4 point correspondences) ---------- */
+function solve(A, b) {
+  const n = b.length, M = A.map((r, i) => [...r, b[i]]);
+  for (let c = 0; c < n; c++) {
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    if (Math.abs(M[p][c]) < 1e-12) return null;
+    [M[c], M[p]] = [M[p], M[c]];
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue;
+      const f = M[r][c] / M[c][c];
+      for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k];
+    }
+  }
+  return M.map((r, i) => r[n] / r[i]);
+}
+function homography(src, dst) {
+  const A = [], b = [];
+  for (let i = 0; i < 4; i++) {
+    const [x, y] = src[i], [X, Y] = dst[i];
+    A.push([x, y, 1, 0, 0, 0, -x * X, -y * X]); b.push(X);
+    A.push([0, 0, 0, x, y, 1, -x * Y, -y * Y]); b.push(Y);
+  }
+  const h = solve(A, b);
+  return h ? [...h, 1] : null;
+}
+function apply(H, x, y) {
+  const w = H[6] * x + H[7] * y + H[8];
+  return [(H[0] * x + H[1] * y + H[2]) / w, (H[3] * x + H[4] * y + H[5]) / w];
+}
+const UNIT = [[0, 0], [1, 0], [1, 1], [0, 1]];
+
+/* ---------- Sound: Salamander piano samples with a synth fallback ---------- */
+const audio = new (window.AudioContext || window.webkitAudioContext)();
+const master = audio.createGain(); master.gain.value = 0.8; master.connect(audio.destination);
+const SAMPLE_BASE = "https://tonejs.github.io/audio/salamander/";
+const SAMPLE_NOTES = { "A3": 57, "C4": 60, "Ds4": 63, "Fs4": 66, "A4": 69, "C5": 72, "Ds5": 75, "Fs5": 78, "A5": 81, "C6": 84 };
+const samples = []; // { midi, buffer }
+let samplesReady = false;
+async function loadSamples() {
+  try {
+    await Promise.all(Object.entries(SAMPLE_NOTES).map(async ([name, midi]) => {
+      const res = await fetch(SAMPLE_BASE + name + ".mp3");
+      if (!res.ok) throw new Error(res.status);
+      samples.push({ midi, buffer: await audio.decodeAudioData(await res.arrayBuffer()) });
+    }));
+    samplesReady = true;
+  } catch (e) { console.warn("Piano samples unavailable, using synth", e); }
+}
+const voices = new Map(); // midi -> { gain, stop }
+function noteOn(midi, velocity = 0.9) {
+  if (audio.state === "suspended") audio.resume();
+  noteOff(midi, 0.05);
+  const t = audio.currentTime, gain = audio.createGain();
+  gain.connect(master);
+  if (samplesReady) {
+    const s = samples.reduce((a, b) => Math.abs(b.midi - midi) < Math.abs(a.midi - midi) ? b : a);
+    const src = audio.createBufferSource();
+    src.buffer = s.buffer; src.playbackRate.value = Math.pow(2, (midi - s.midi) / 12);
+    src.connect(gain); gain.gain.setValueAtTime(velocity, t); src.start(t);
+    voices.set(midi, { gain, stop: (w) => src.stop(w) });
+  } else {
+    const f = 440 * Math.pow(2, (midi - 69) / 12);
+    const o1 = audio.createOscillator(), o2 = audio.createOscillator();
+    o1.type = "triangle"; o1.frequency.value = f; o2.type = "sine"; o2.frequency.value = f * 2;
+    const g2 = audio.createGain(); g2.gain.value = 0.25;
+    o1.connect(gain); o2.connect(g2).connect(gain);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(velocity * 0.5, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 1.8);
+    o1.start(t); o2.start(t); o1.stop(t + 2); o2.stop(t + 2);
+    voices.set(midi, { gain, stop: (w) => { o1.stop(w); o2.stop(w); } });
+  }
+  lightKey(midi, true);
+  onNotePlayed(midi);
+}
+function noteOff(midi, release = 0.45) {
+  const v = voices.get(midi);
+  if (!v) return;
+  voices.delete(midi);
+  const t = audio.currentTime;
+  v.gain.gain.cancelScheduledValues(t);
+  v.gain.gain.setValueAtTime(v.gain.gain.value, t);
+  v.gain.gain.exponentialRampToValueAtTime(0.0001, t + release);
+  try { v.stop(t + release + 0.05); } catch (_) {}
+  lightKey(midi, false);
+}
+
+/* ---------- On-screen keyboard ---------- */
+const kbEl = document.getElementById("keyboard");
+const keyEls = new Map();
+for (const k of KEYS) {
+  const el = document.createElement("div");
+  el.className = "key " + (k.black ? "black" : "white");
+  el.style.left = (k.u0 * 100) + "%";
+  el.style.width = ((k.u1 - k.u0) * 100) + "%";
+  if (k.label) { const s = document.createElement("span"); s.textContent = k.label; el.appendChild(s); }
+  el.addEventListener("pointerdown", (e) => { e.preventDefault(); noteOn(k.midi); });
+  el.addEventListener("pointerup", () => noteOff(k.midi));
+  el.addEventListener("pointerleave", () => noteOff(k.midi));
+  kbEl.appendChild(el); keyEls.set(k.midi, el);
+}
+const litOnVideo = new Map(); // midi -> time lit
+function lightKey(midi, on) {
+  keyEls.get(midi)?.classList.toggle("on", on);
+  if (on) litOnVideo.set(midi, performance.now()); else litOnVideo.delete(midi);
+}
+
+/* ---------- Learn a tune (public-domain melodies) ---------- */
+const SONGS = {
+  ode: [64, 64, 65, 67, 67, 65, 64, 62, 60, 60, 62, 64, 64, 62, 62, 64, 64, 65, 67, 67, 65, 64, 62, 60, 60, 62, 64, 62, 60, 60],
+  twinkle: [60, 60, 67, 67, 69, 69, 67, 65, 65, 64, 64, 62, 62, 60, 67, 67, 65, 65, 64, 64, 62, 67, 67, 65, 65, 64, 64, 62],
+  scale: [60, 62, 64, 65, 67, 69, 71, 72, 71, 69, 67, 65, 64, 62, 60],
+};
+let song = null, songPos = 0;
+const songSel = document.getElementById("song"), songProgress = document.getElementById("songProgress");
+function nextNote() { return song ? song[songPos] : null; }
+function refreshSong() {
+  keyEls.forEach(el => el.classList.remove("next"));
+  if (!song) { songProgress.textContent = ""; return; }
+  if (songPos >= song.length) { songProgress.textContent = "You played the whole tune. Pick it again to restart."; return; }
+  keyEls.get(nextNote())?.classList.add("next");
+  songProgress.textContent = `Note ${songPos + 1} of ${song.length}. Play the highlighted key.`;
+}
+function onNotePlayed(midi) {
+  if (song && songPos < song.length && midi === nextNote()) { songPos++; refreshSong(); }
+}
+songSel.addEventListener("change", () => { song = SONGS[songSel.value] || null; songPos = 0; refreshSong(); });
+
+/* ---------- Settings (remembered in this browser) ---------- */
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem("paperPiano." + k)); } catch (_) { return null; } },
+  set(k, v) { try { localStorage.setItem("paperPiano." + k, JSON.stringify(v)); } catch (_) {} },
+};
+const modeSel = document.getElementById("mode"), sens = document.getElementById("sensitivity");
+const flipBox = document.getElementById("flip"), showKeysBox = document.getElementById("showKeys");
+for (const [el, key, prop] of [[modeSel, "mode", "value"], [sens, "sens", "value"], [flipBox, "flip", "checked"], [showKeysBox, "showKeys", "checked"]]) {
+  const saved = store.get(key);
+  if (saved !== null) el[prop] = saved;
+  el.addEventListener("change", () => store.set(key, el[prop]));
+}
+flipBox.addEventListener("change", () => { corners = []; store.set("corners", null); updateCalibration(); });
+
+/* ---------- Camera, calibration and hand tracking ---------- */
+const canvas = document.getElementById("view"), ctx = canvas.getContext("2d");
+const video = document.createElement("video");
+video.playsInline = true; video.muted = true;
+const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+const startBtn = document.getElementById("startBtn"), stageMsg = document.getElementById("stageMsg");
+const camSel = document.getElementById("cameraSelect"), cornersBtn = document.getElementById("cornersBtn");
+let stream = null, landmarker = null, corners = store.get("corners") || [], Huv2img = null, Himg2uv = null;
+let dragIdx = -1;
+
+function setStatus(t) { statusEl.textContent = t; }
+function setHint(t) { hintEl.textContent = t || ""; hintEl.hidden = !t; }
+function markSteps() {
+  document.getElementById("step2").classList.toggle("done", !!stream);
+  document.getElementById("step3").classList.toggle("done", corners.length === 4);
+}
+function updateCalibration() {
+  if (corners.length === 4) {
+    Huv2img = homography(UNIT, corners);
+    Himg2uv = homography(corners, UNIT);
+    store.set("corners", corners);
+    setHint("");
+  } else {
+    Huv2img = Himg2uv = null;
+    if (stream) setHint(`Click red dot ${corners.length + 1} on your printed keyboard.`);
+  }
+  cornersBtn.disabled = !stream;
+  markSteps();
+}
+
+async function loadLandmarker() {
+  setStatus("Loading hand tracking…");
+  const { FilesetResolver, HandLandmarker } = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs");
+  const fileset = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+  const opts = (delegate) => ({
+    baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", delegate },
+    runningMode: "VIDEO", numHands: 2, minHandDetectionConfidence: 0.5, minTrackingConfidence: 0.5,
+  });
+  try { landmarker = await HandLandmarker.createFromOptions(fileset, opts("GPU")); }
+  catch (_) { landmarker = await HandLandmarker.createFromOptions(fileset, opts("CPU")); }
+}
+
+async function openCamera(deviceId) {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  const video_c = deviceId ? { deviceId: { exact: deviceId } } : { facingMode: "environment" };
+  stream = await navigator.mediaDevices.getUserMedia({ video: { ...video_c, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+  video.srcObject = stream;
+  await video.play();
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  document.getElementById("stage").style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+  const current = stream.getVideoTracks()[0].getSettings().deviceId;
+  const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+  camSel.innerHTML = "";
+  cams.forEach((c, i) => {
+    const o = document.createElement("option");
+    o.value = c.deviceId; o.textContent = c.label || `Camera ${i + 1}`; o.selected = c.deviceId === current;
+    camSel.appendChild(o);
+  });
+  camSel.disabled = cams.length < 2;
+}
+
+startBtn.addEventListener("click", async () => {
+  startBtn.disabled = true;
+  audio.resume();
+  try {
+    setStatus("Asking for camera access…");
+    await openCamera(store.get("camera"));
+  } catch (e) {
+    try { await openCamera(null); } catch (err) {
+      startBtn.disabled = false;
+      setStatus("Camera blocked. Allow camera access in your browser's site settings, then try again.");
+      return;
+    }
+  }
+  stageMsg.hidden = true;
+  updateCalibration();
+  loadSamples();
+  try { await loadLandmarker(); setStatus("Hand tracking ready."); }
+  catch (e) { console.error(e); setStatus("Hand tracking failed to load. Check your connection and reload the page."); }
+  requestAnimationFrame(loop);
+});
+camSel.addEventListener("change", async () => {
+  store.set("camera", camSel.value);
+  corners = []; store.set("corners", null);
+  await openCamera(camSel.value);
+  updateCalibration();
+});
+cornersBtn.addEventListener("click", () => { corners = []; store.set("corners", null); updateCalibration(); });
+
+function canvasPoint(e) {
+  const r = canvas.getBoundingClientRect();
+  return [(e.clientX - r.left) / r.width * canvas.width, (e.clientY - r.top) / r.height * canvas.height];
+}
+canvas.addEventListener("pointerdown", (e) => {
+  if (!stream) return;
+  const p = canvasPoint(e);
+  if (corners.length < 4) { corners.push(p); updateCalibration(); return; }
+  const grab = canvas.width * 0.03;
+  dragIdx = corners.findIndex(c => Math.hypot(c[0] - p[0], c[1] - p[1]) < grab);
+  if (dragIdx >= 0) canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener("pointermove", (e) => {
+  if (dragIdx < 0) return;
+  corners[dragIdx] = canvasPoint(e); updateCalibration();
+});
+canvas.addEventListener("pointerup", () => { dragIdx = -1; });
+
+/* ---------- Tap detection ----------
+   A single camera can't see whether a fingertip touches the paper, so a tap is
+   recognised by its motion: a quick downward stroke (relative to the wrist) that
+   suddenly stops. The note plays at the moment the finger stops. */
+const TIPS = [4, 8, 12, 16, 20];
+const fingers = new Map(); // id -> state
+function fingerState(id) {
+  if (!fingers.has(id)) fingers.set(id, { y: null, t: 0, vy: 0, peak: 0, down: false, downY: 0, key: null, lastHit: 0, seen: 0 });
+  return fingers.get(id);
+}
+function trackFinger(id, x, y, wristVy, now) {
+  const f = fingerState(id);
+  f.seen = now;
+  const uv = Himg2uv ? apply(Himg2uv, x, y) : null;
+  const key = uv ? keyAt(uv[0], uv[1]) : null;
+  if (f.y === null) { f.y = y; f.t = now; f.key = key; return; }
+  const dt = Math.max(1, now - f.t) / 1000;
+  const rawV = (y - f.y) / dt - 0.5 * wristVy;
+  f.vy = 0.5 * f.vy + 0.5 * rawV;
+  f.y = y; f.t = now;
+
+  if (modeSel.value === "slide") {
+    if (key?.midi !== f.key?.midi) {
+      if (f.key) noteOff(f.key.midi);
+      if (key) noteOn(key.midi, 0.75);
+    }
+    f.key = key;
+    return;
+  }
+
+  const H = canvas.height;
+  const threshold = H * (1.1 - sens.value * 0.09);          // px/s needed for a tap
+  if (!f.down) {
+    f.peak = Math.max(f.peak * 0.85, f.vy);
+    const stopped = f.vy < f.peak * 0.3;
+    if (f.peak > threshold && stopped && key && now - f.lastHit > 90) {
+      const vel = Math.min(1, 0.55 + 0.45 * (f.peak / (threshold * 2.5)));
+      noteOn(key.midi, vel);
+      f.down = true; f.downY = y; f.key = key; f.lastHit = now; f.peak = 0;
+    }
+  } else if (y < f.downY - H * 0.018 || key?.midi !== f.key?.midi) {
+    if (f.key) noteOff(f.key.midi);
+    f.down = false; f.key = null;
+  }
+}
+
+/* ---------- Render loop ---------- */
+let lastVideoTime = -1, hands = [];
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function quad(u0, v0, u1, v1) {
+  return [[u0, v0], [u1, v0], [u1, v1], [u0, v1]].map(([u, v]) => apply(Huv2img, u, v));
+}
+function fillPoly(pts) {
+  ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath();
+}
+
+function loop() {
+  const now = performance.now();
+  const flip = flipBox.checked, W = canvas.width, H = canvas.height;
+
+  ctx.save();
+  if (flip) { ctx.translate(W, 0); ctx.scale(-1, 1); }
+  ctx.drawImage(video, 0, 0, W, H);
+  ctx.restore();
+
+  if (landmarker && video.currentTime !== lastVideoTime) {
+    lastVideoTime = video.currentTime;
+    const res = landmarker.detectForVideo(video, now);
+    hands = res.landmarks.map((lm, i) => ({
+      side: res.handednesses?.[i]?.[0]?.categoryName || String(i),
+      pts: lm.map(p => [(flip ? 1 - p.x : p.x) * W, p.y * H]),
+    }));
+    for (const h of hands) {
+      const ws = fingerState(h.side + "-wrist");
+      const wy = h.pts[0][1], wdt = Math.max(1, now - (ws.t || now)) / 1000;
+      const wristVy = ws.y === null ? 0 : (wy - ws.y) / wdt;
+      ws.y = wy; ws.t = now;
+      for (const tip of TIPS) trackFinger(`${h.side}-${tip}`, h.pts[tip][0], h.pts[tip][1], wristVy, now);
+    }
+    for (const [id, f] of fingers) {
+      if (now - f.seen > 300) {
+        if (f.key && (f.down || modeSel.value === "slide")) noteOff(f.key.midi);
+        f.key = null; f.down = false; f.y = null; f.vy = 0; f.peak = 0;
+      }
+    }
+  }
+
+  const felt = css("--felt");
+  if (Huv2img) {
+    if (showKeysBox.checked) {
+      ctx.lineWidth = Math.max(1, W / 640);
+      ctx.strokeStyle = "rgba(255,255,255,0.75)";
+      for (const k of KEYS) { fillPoly(quad(k.u0, 0, k.u1, k.v1)); ctx.stroke(); }
+    }
+    const target = nextNote();
+    for (const k of KEYS) {
+      const lit = litOnVideo.has(k.midi);
+      if (!lit && k.midi !== target) continue;
+      fillPoly(quad(k.u0, 0, k.u1, k.v1));
+      ctx.fillStyle = lit ? felt : "rgba(255,255,255,0.35)";
+      ctx.globalAlpha = lit ? 0.6 : 1;
+      ctx.fill(); ctx.globalAlpha = 1;
+    }
+  }
+  for (const h of hands) {
+    for (const tip of TIPS) {
+      const [x, y] = h.pts[tip], f = fingers.get(`${h.side}-${tip}`);
+      ctx.beginPath(); ctx.arc(x, y, W / 160, 0, Math.PI * 2);
+      ctx.fillStyle = f?.down ? felt : "#ffffff"; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.stroke();
+    }
+  }
+  corners.forEach(([x, y], i) => {
+    ctx.beginPath(); ctx.arc(x, y, W / 90, 0, Math.PI * 2);
+    ctx.lineWidth = 3; ctx.strokeStyle = felt; ctx.stroke();
+    ctx.fillStyle = "#fff"; ctx.font = `600 ${Math.round(W / 50)}px "Familjen Grotesk", system-ui, sans-serif`;
+    ctx.fillText(String(i + 1), x + W / 70, y - W / 70);
+  });
+  requestAnimationFrame(loop);
+}
+
+markSteps();
+refreshSong();
+if (!navigator.mediaDevices?.getUserMedia) {
+  startBtn.disabled = true;
+  setStatus("This browser can't use a camera here. Open the page over https or from localhost.");
+}
+</script>
+</body>
+</html>
